@@ -6,13 +6,13 @@ This app is being built to make taking notes in lectures way easier. The idea is
 
 * **Organize Your Notes:**  Create subjects (like "History" or "Calculus") and then add notes for individual lectures within those subjects. You can edit and delete subjects and lectures.
 * **Edit Titles and Descriptions:** You can change the title and description of your lectures by long-pressing on them.
+* **Save**
 
 
 **What's Coming Soon:**
 
 * **Record Audio:**  Record lectures directly in the app.
 * **AI Magic:**  Let the AI transcribe your recordings and create notes for you. This will summarize the main points and pick out important terms.
-* **Edit Your Notes:** Add your own thoughts and comments to the AI-generated notes.
 * **Sync Everywhere:** Access your notes on any device.
 * **Export and Share:** Save your notes as PDFs, text files, or other formats.
 

@@ -52,6 +52,14 @@ class DatabaseHelper {
     return await File(path).exists();
   }
 
+  Future<bool> ifEmpty(tableName) async{
+    final db=await database();
+    final count= Sqflite.firstIntValue(
+      await db.rawQuery("SELECT COUNT(*) FROM $tableName") 
+    );
+    return count==0;
+  }
+
 
   Future<void> createTableInCurrentDataBase(String tableName, List<String> columns) async {
     final db = await database();

@@ -12,6 +12,7 @@ dependencies:
   sqflite: ^2.0.0+4  # Use the latest version
   path: ^1.8.0 
   sqflite_common_ffi: any
+  record: ^5.2.0
 
 dev_dependencies:
   flutter_test:
