@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
+
 final dbHelper = DatabaseHelper.instance;
 
 class Notes extends StatefulWidget {
