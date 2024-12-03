@@ -6,8 +6,32 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
 import 'globals.dart' as globals;
 import 'selectNotes.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+Future<void> _requestPermissions() async {
+  Map<Permission, PermissionStatus> statuses = await [
+    Permission.microphone,
+    Permission.manageExternalStorage, // Use manageExternalStorage if needed to write
+  ].request();
+
+  if (statuses[Permission.microphone]!.isGranted &&
+      statuses[Permission.manageExternalStorage]!.isGranted) {
+    // All permissions granted, proceed with functionality.
+  } else {
+    // Handle cases where permissions are not granted.  For example,
+    // if a permission is permanently denied, you might want to open app settings.
+    if (statuses[Permission.microphone]!.isPermanentlyDenied ||
+      statuses[Permission.manageExternalStorage]!.isPermanentlyDenied){
+      openAppSettings();
+    }
+  }
+}
+
+
 
 final dbHelper = DatabaseHelper.instance;
+final microphoneStatus = Permission.microphone.request();
+final stotageStatus = Permission.storage.request();
 
 
 
