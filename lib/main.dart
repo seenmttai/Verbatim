@@ -6,37 +6,23 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
 import 'globals.dart' as globals;
 import 'selectNotes.dart';
-import 'package:permission_handler/permission_handler.dart';
-
-Future<void> _requestPermissions() async {
-  Map<Permission, PermissionStatus> statuses = await [
-    Permission.microphone,
-    Permission.manageExternalStorage, // Use manageExternalStorage if needed to write
-  ].request();
-
-  if (statuses[Permission.microphone]!.isGranted &&
-      statuses[Permission.manageExternalStorage]!.isGranted) {
-    // All permissions granted, proceed with functionality.
-  } else {
-    // Handle cases where permissions are not granted.  For example,
-    // if a permission is permanently denied, you might want to open app settings.
-    if (statuses[Permission.microphone]!.isPermanentlyDenied ||
-      statuses[Permission.manageExternalStorage]!.isPermanentlyDenied){
-      openAppSettings();
-    }
-  }
-}
+import 'package:get_it/get_it.dart';
+import 'recording_service.dart';
 
 
 
 final dbHelper = DatabaseHelper.instance;
-final microphoneStatus = Permission.microphone.request();
-final stotageStatus = Permission.storage.request();
 
 
 
+
+void setupServiceLocator() {
+  GetIt.instance.registerLazySingleton(() => RecordingService());
+}
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  setupServiceLocator();
   if (kIsWeb) {
     throw UnsupportedError('Web is not supported yet.');
   } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -175,7 +161,6 @@ class HomePageState extends State<HomePage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  // Name TextField
                                   TextField(
                                     controller: TextEditingController(
                                         text: _subjects[index]['Name']),
@@ -197,7 +182,6 @@ class HomePageState extends State<HomePage> {
                                     },
                                   ),
                                   const SizedBox(height: 8),
-                                  // Description TextField
                                   TextField(
                                     controller: TextEditingController(
                                         text: _subjects[index]['Desc']),

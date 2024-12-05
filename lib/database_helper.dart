@@ -43,7 +43,6 @@ class DatabaseHelper {
         ''');
       } catch (e) {
         print('Error creating SubjectList table: $e');
-        // Consider more robust error handling, like showing a user-friendly message.
       }
   }
 
@@ -82,7 +81,7 @@ class DatabaseHelper {
       return await db.insert(tableName, values);
       } catch (e) {
       print('Error inserting row into $tableName: $e');
-      return 0; // Indicate failure
+      return 0; 
     }
   }
 
@@ -92,7 +91,7 @@ class DatabaseHelper {
       return await db.query(table);
     } catch (e) {
       print('Error reading all rows from $table: $e');
-      return []; // Return empty list in case of error
+      return []; 
     }
   }
 

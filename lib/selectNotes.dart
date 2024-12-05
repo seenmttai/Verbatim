@@ -110,7 +110,7 @@ class _SelectNotesState extends State<SelectNotes> {
                           onTap: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => Notes(index: index))
+                              MaterialPageRoute(builder: (context) => Notes(subjectIndex: this.index, index: index))
                             );
                           },
                           onLongPress: () {
