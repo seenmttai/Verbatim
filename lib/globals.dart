@@ -11,3 +11,5 @@ String initialContent='';
 List<Map<String,dynamic>> notes=[];
 
 bool isMicOn=false;
+
+String APIKey='';

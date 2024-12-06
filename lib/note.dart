@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:organiser/main.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import 'package:get_it/get_it.dart';
 import 'globals.dart' as globals;
 import 'database_helper.dart';
 import 'recording_service.dart';
+import 'apiKeyPrompt.dart';
 
 
 class Notes extends StatefulWidget {
@@ -23,8 +25,6 @@ class Notes extends StatefulWidget {
 }
 
 class _NotesState extends State<Notes> with WidgetsBindingObserver {
-  // Constants
-  static const String _googleApiKey = 'Google API Key'; // Replace with your actual API key. You can get it from aistudio.google.com, and it has a very good free tier.
 
   // Recording related variables
   late RecordingService _recordingService;
@@ -54,6 +54,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    createAPITable();
     _recordingService = GetIt.instance<RecordingService>();
     WidgetsBinding.instance.addObserver(this);
     _initializeComponents();
@@ -71,6 +72,27 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         '${globals.notes[index]['id']}';
     
     await _contentInitialiserAndLoader();
+  }
+
+  Future<void> createAPITable() async {
+    bool apiTableExists= await dbHelper.tableExists('APITable');
+    print(apiTableExists);
+    if(!apiTableExists){
+      dbHelper.createTableInCurrentDataBase('APITable', ['APIKey']);
+    }
+    bool noApi= await dbHelper.ifEmpty('APITable');
+    print(noApi);
+    if(noApi){
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => ApiKeyPrompt())
+      );
+    }
+    globals.APIKey= (await dbHelper.readAll('APITable'))[0]['APIKey'];
+    List<Map<String,dynamic>> tableAPIKey=(await dbHelper.readAll('APITable'));
+    print('I am checking');
+    print(tableAPIKey);
+    print(globals.APIKey);
   }
 
   @override
@@ -178,7 +200,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       List<int> audioBytes = await audioFile.readAsBytes();
       
       final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=$_googleApiKey'),
+        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'contents': [{
