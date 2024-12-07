@@ -45,6 +45,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   final List<String> _availableModels = [
     'gemini-exp-1121',
     'gemini-exp-1114',
+    'gemini-exp-1206',
     'learnlm-1.5-pro-experimental',
     'gemini-1.5-pro',
     'gemini-1.5-flash-8b',
@@ -191,6 +192,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       return;
     }
 
+
     setState(() {
       _isTranscribing = true;
     });
@@ -241,6 +243,65 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       _showErrorSnackbar('Transcription error: $e');
     }
   }
+
+  Future<void> _continueTranscribingAudio({required String prompt}) async {
+    if (audioPath == null || !await File(audioPath!).exists()) {
+      _showErrorSnackbar('No audio recorded');
+      return;
+    }
+    String memory= (await dbHelper.readAll(tableName))[0]['content'];
+
+    setState(() {
+      _isTranscribing = true;
+    });
+
+    try {
+      final File audioFile = File(audioPath!);
+      List<int> audioBytes = await audioFile.readAsBytes();
+      
+      final response = await http.post(
+        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'contents': [{
+            'parts': [
+              {'text': 'The current audio given is continution of previous audio, whose transcription was $memory \n\n Now, $prompt'},
+              {
+                'inline_data': {
+                  'mime_type': 'audio/mp4',
+                  'data': base64Encode(audioBytes)
+                }
+              }
+            ]
+          }]
+        }),
+      );
+
+      setState(() {
+        _isTranscribing = false;
+      });
+
+      if (response.statusCode == 200) {
+        final responseBody = json.decode(response.body);
+        String? transcription = responseBody['candidates'][0]['content']['parts'][0]['text'];
+        
+        if (transcription != null) {
+          _updateContentWithTranscription(transcription);
+        } else {
+          _showErrorSnackbar('No transcription received');
+        }
+      } else {
+        print('Gemini API error: ${response.body}');
+        _showErrorSnackbar('Transcription failed:${response.body} ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() {
+        _isTranscribing = false;
+      });
+      _showErrorSnackbar('Transcription error: $e');
+    }
+  }
+
 
   void _updateContentWithTranscription(String transcription) async {
     final dbHelper = DatabaseHelper.instance;
@@ -430,7 +491,13 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                           ),
                       tooltip: 'Transcribe as Student Notes',
                     ),
-                    FloatingActionButton(
+                    GestureDetector(
+                      onLongPress: _isTranscribing 
+                        ? null 
+                        : () => _continueTranscribingAudio(
+                            prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
+                          ),
+                      child: FloatingActionButton(
                       heroTag: 'aiButton',
                       backgroundColor: _isTranscribing ? Colors.grey : null,
                       child: _isTranscribing 
@@ -442,7 +509,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                             prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
                           ),
                       tooltip: 'AI Enhanced Transcription',
-                    ),
+                    )),
                   ],
                 ),
               ),
