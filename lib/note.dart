@@ -478,7 +478,13 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                       },
                       tooltip: globals.isMicOn ? 'Stop Recording' : 'Start Recording',
                     ),
-                    FloatingActionButton(
+                    GestureDetector(
+                      onLongPress: _isTranscribing 
+                        ? null 
+                        : () => _continueTranscribingAudio(
+                            prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
+                          ),
+                      child:FloatingActionButton(
                       heroTag: 'studentNotesButton',
                       backgroundColor: _isTranscribing ? Colors.grey : null,
                       child: _isTranscribing 
@@ -487,10 +493,10 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                       onPressed: _isTranscribing 
                         ? null 
                         : () => _transcribeAudioWithGemini(
-                            prompt: 'Write detailed notes as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
+                            prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
                           ),
                       tooltip: 'Transcribe as Student Notes',
-                    ),
+                    )),
                     GestureDetector(
                       onLongPress: _isTranscribing 
                         ? null 
