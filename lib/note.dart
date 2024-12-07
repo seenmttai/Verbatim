@@ -12,6 +12,7 @@ import 'globals.dart' as globals;
 import 'database_helper.dart';
 import 'recording_service.dart';
 import 'apiKeyPrompt.dart';
+import 'package:markdown_editor_plus/markdown_editor_plus.dart';
 
 
 class Notes extends StatefulWidget {
@@ -62,6 +63,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   }
 
   Future<void> _initializeComponents() async {
+    print('debug 1');
     index = widget.index;
     subjectIndex = widget.subjectIndex;
     titleOfPage = globals.notes[index]['name'];
@@ -71,17 +73,21 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
     tableName = 'contentOf_${sanitizedSubjectName}_${sanitizedName}_'
         '${globals.notes[index]['id']}';
+    print('debug 2');
     
     await _contentInitialiserAndLoader();
   }
 
   Future<void> createAPITable() async {
     bool apiTableExists= await dbHelper.tableExists('APITable');
+    print('debug 3');
     print(apiTableExists);
     if(!apiTableExists){
       dbHelper.createTableInCurrentDataBase('APITable', ['APIKey']);
     }
+    print('debug 4');
     bool noApi= await dbHelper.ifEmpty('APITable');
+    print('debug 5');
     print(noApi);
     if(noApi){
       Navigator.push(
@@ -89,6 +95,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         MaterialPageRoute(builder: (context) => ApiKeyPrompt())
       );
     }
+    print('debug 6');
     globals.APIKey= (await dbHelper.readAll('APITable'))[0]['APIKey'];
     List<Map<String,dynamic>> tableAPIKey=(await dbHelper.readAll('APITable'));
     print('I am checking');
@@ -98,12 +105,14 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    print('debug 7');
     super.didChangeAppLifecycleState(state);
     if (_recordingService.isRecording) {
       if (state == AppLifecycleState.resumed) {
         setState(() {}); 
       }
     }
+    print('debug 8');
   }
 
 
@@ -111,28 +120,32 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   Future<void> _contentInitialiserAndLoader() async {
     final dbHelper = DatabaseHelper.instance;
     bool itemExists = await dbHelper.tableExists(tableName);
-    
+
     if (!itemExists) {
       await dbHelper.createTableInCurrentDataBase(tableName, ['content']);
       await dbHelper.insertRow(tableName, {'content': ''});
     }
-
+    print('debug 9');
     String initialContent = (await dbHelper.readAll(tableName))[0]['content'];
     _textController.text = initialContent;
     
     if (mounted) {
       setState(() {});
     }
+    print('debug 10');
   }
 
   Future<String?> getAudioFilePath() async {
     final directory = await getApplicationDocumentsDirectory();
     return '${directory.path}/recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    print('debug 11');
   }
 
   Future<void> startRecording() async {
+    print('debug 12');
     var micPermission = await Permission.microphone.request();
     var storagePermission = await Permission.storage.request();
+    print('debug 13');
     
     if (!micPermission.isGranted || !storagePermission.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +153,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       );
       return;
     }
-
+    print('debug 14');
     try {
       audioPath = await getAudioFilePath();
       if (audioPath != null) {
@@ -162,6 +175,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         SnackBar(content: Text('Failed to start recording: $e'))
       );
     }
+    print('debug 15');
   }
 
   Future<void> stopRecording() async {
@@ -183,10 +197,12 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         SnackBar(content: Text('Failed to stop recording: $e'))
       );
     }
+    print('debug 16');
   }
 
 
   Future<void> _transcribeAudioWithGemini({required String prompt}) async {
+    print('debug 17');
     if (audioPath == null || !await File(audioPath!).exists()) {
       _showErrorSnackbar('No audio recorded');
       return;
@@ -196,6 +212,8 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
     setState(() {
       _isTranscribing = true;
     });
+
+    print('debug 18');
 
     try {
       final File audioFile = File(audioPath!);
@@ -218,6 +236,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
           }]
         }),
       );
+      print('debug 19');
 
       setState(() {
         _isTranscribing = false;
@@ -226,6 +245,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
         String? transcription = responseBody['candidates'][0]['content']['parts'][0]['text'];
+        print('debug 20');
         
         if (transcription != null) {
           _updateContentWithTranscription(transcription);
@@ -241,10 +261,12 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         _isTranscribing = false;
       });
       _showErrorSnackbar('Transcription error: $e');
+      print('debug 21');
     }
   }
 
   Future<void> _continueTranscribingAudio({required String prompt}) async {
+    print('debug 22');
     if (audioPath == null || !await File(audioPath!).exists()) {
       _showErrorSnackbar('No audio recorded');
       return;
@@ -254,6 +276,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
     setState(() {
       _isTranscribing = true;
     });
+    print('debug 23');
 
     try {
       final File audioFile = File(audioPath!);
@@ -277,10 +300,12 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         }),
       );
 
+      print('debug 24');
       setState(() {
         _isTranscribing = false;
       });
 
+      print('debug 25');
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
         String? transcription = responseBody['candidates'][0]['content']['parts'][0]['text'];
@@ -300,6 +325,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       });
       _showErrorSnackbar('Transcription error: $e');
     }
+    print('debug 26');
   }
 
 
@@ -310,13 +336,15 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
     String updatedContent = '$currentContent\n\n[Transcription ${DateTime.now().toString()}]:\n$transcription';
     
     await dbHelper.updateRow(tableName, 1, {'content': updatedContent});
-    
+    print('debug 27');
     setState(() {
       _textController.text = updatedContent;
     });
+    print('debug 28');
   }
 
   void _showErrorSnackbar(String message) {
+    print('debug 29');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -327,6 +355,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   }
 
   void _showModelSelectionDialog() {
+    print('debug 30');
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -339,9 +368,11 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                   title: Text(model),
                   selected: model == _selectedModel,
                   onTap: () {
+                    print('debug 31');
                     setState(() {
                       _selectedModel = model;
                     });
+                    print('debug 32');
                     Navigator.of(context).pop();
                   },
                 )
@@ -378,6 +409,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                 ),
                 TextButton(
                   onPressed: () async {
+                    print('debug 33');
                     await stopRecording();
                     Navigator.of(context).pop(true);
                   },
@@ -402,6 +434,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
             IconButton(
               icon: Icon(Icons.info_outline),
               onPressed: () {
+                print('debug 34');
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -421,7 +454,10 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () { 
+                          print('debug 35');
+                          Navigator.of(context).pop();
+                          },
                         child: Text('OK'),
                       ),
                     ],
@@ -438,9 +474,9 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                 child: SingleChildScrollView(
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: TextField(
+                    child: MarkdownAutoPreview(
                       controller: _textController,
-                      keyboardType: TextInputType.multiline,
+                      //keyboardType: TextInputType.multiline,
                       minLines: null,
                       maxLines: null,
                       style: TextStyle(fontSize: 16),
@@ -450,6 +486,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                         hintStyle: TextStyle(color: Colors.grey),
                       ),
                       onChanged: (val) async {
+                        print('debug 36');
                         final dbHelper = DatabaseHelper.instance;
                         await dbHelper.updateRow(tableName, 1, {'content': val});
                       },
@@ -470,10 +507,13 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                         color: globals.isMicOn ? Colors.red : null,
                       ),
                       onPressed: () async {
+                        print('debug 37');
                         if (globals.isMicOn) {
                           await stopRecording();
+                          print('debug 38');
                         } else {
                           await startRecording();
+                          print('debug 39');
                         }
                       },
                       tooltip: globals.isMicOn ? 'Stop Recording' : 'Start Recording',
@@ -481,9 +521,12 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                     GestureDetector(
                       onLongPress: _isTranscribing 
                         ? null 
-                        : () => _continueTranscribingAudio(
+                        : () {
+                          _continueTranscribingAudio(
                             prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
-                          ),
+                          );
+                          print('debug 40');
+                          },
                       child:FloatingActionButton(
                       heroTag: 'studentNotesButton',
                       backgroundColor: _isTranscribing ? Colors.grey : null,
@@ -492,17 +535,22 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                         : Icon(Icons.school),
                       onPressed: _isTranscribing 
                         ? null 
-                        : () => _transcribeAudioWithGemini(
+                        : () {
+                          _transcribeAudioWithGemini(
                             prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
-                          ),
-                      tooltip: 'Transcribe as Student Notes',
+                          );
+                          print('debug 41');
+                          },
                     )),
                     GestureDetector(
                       onLongPress: _isTranscribing 
                         ? null 
-                        : () => _continueTranscribingAudio(
+                        : () {
+                          _continueTranscribingAudio(
                             prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
-                          ),
+                          );
+                          print('debug 42');
+                          },
                       child: FloatingActionButton(
                       heroTag: 'aiButton',
                       backgroundColor: _isTranscribing ? Colors.grey : null,
@@ -511,10 +559,11 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                         : Icon(Icons.auto_fix_high),
                       onPressed: _isTranscribing 
                         ? null 
-                        : () => _transcribeAudioWithGemini(
+                        : () { _transcribeAudioWithGemini(
                             prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
-                          ),
-                      tooltip: 'AI Enhanced Transcription',
+                          );
+                          print('debug 43');
+                          },
                     )),
                   ],
                 ),
