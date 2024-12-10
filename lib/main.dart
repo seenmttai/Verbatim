@@ -8,38 +8,29 @@ import 'globals.dart' as globals;
 import 'selectNotes.dart';
 import 'package:get_it/get_it.dart';
 import 'recording_service.dart';
-import 'apiKeyPrompt.dart';
+
+
 
 final dbHelper = DatabaseHelper.instance;
 
+
+
+
 void setupServiceLocator() {
-  print("[DEBUG] setupServiceLocator: Starting service locator setup");
   GetIt.instance.registerLazySingleton(() => RecordingService());
-  print("[DEBUG] setupServiceLocator: RecordingService registered");
-  print("[DEBUG] setupServiceLocator: Service locator setup complete");
 }
 
 void main() {
-  print("[DEBUG] main: Starting application");
   WidgetsFlutterBinding.ensureInitialized();
-  print("[DEBUG] main: WidgetsFlutterBinding initialized");
   setupServiceLocator();
-  print("[DEBUG] main: Service locator setup called");
-
   if (kIsWeb) {
-    print("[DEBUG] main: Running on Web - throwing UnsupportedError");
     throw UnsupportedError('Web is not supported yet.');
   } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    print(
-        "[DEBUG] main: Running on Windows, Linux, or macOS - initializing sqflite FFI");
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    print("[DEBUG] main: sqflite FFI initialized, databaseFactory set");
   }
-
-  print("[DEBUG] main: Running runApp");
   runApp(const MainApp());
-  print("[DEBUG] main: runApp executed");
+
 }
 
 class MainApp extends StatelessWidget {
@@ -47,15 +38,14 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print("[DEBUG] MainApp.build: Building MainApp");
     return const MaterialApp(
       home: HomePage(),
     );
   }
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class HomePage extends StatefulWidget { 
+  const HomePage({super.key}); 
 
   @override
   HomePageState createState() => HomePageState();
@@ -67,63 +57,37 @@ class HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    print("[DEBUG] HomePageState.initState: Initializing HomePageState");
     _loadAndInitialize();
-    print(
-        "[DEBUG] HomePageState.initState: _loadAndInitialize completed, HomePageState initialized");
   }
 
   Future<void> _loadAndInitialize() async {
-    print(
-        "[DEBUG] HomePageState._loadAndInitialize: Starting _loadAndInitialize");
     await _loadSubjects();
-    print(
-        "[DEBUG] HomePageState._loadAndInitialize: _loadSubjects completed, creating toggle list");
     createToggleList();
-    print(
-        "[DEBUG] HomePageState._loadAndInitialize: createToggleList completed");
-    print("[DEBUG] HomePageState._loadAndInitialize: _loadAndInitialize complete");
   }
 
-  void createToggleList() {
-    print('[DEBUG] HomePageState.createToggleList: Creating toggle list');
-    print(
-        '[DEBUG] HomePageState.createToggleList: Current number of subjects: ${globals.numberOfSubjects}');
+    void createToggleList(){
+    print('I am in createToggleList!');
+    print(globals.numberOfSubjects);
     globals.subjectToggledList.clear();
-    for (int i = 0; i < globals.numberOfSubjects; i++) {
-      globals.subjectToggledList.add(false);
-    }
-    print(
-        '[DEBUG] HomePageState.createToggleList: Toggle list created: ${globals.subjectToggledList}');
+    for(int i=0;i<globals.numberOfSubjects;i++){
+      globals.subjectToggledList.add(false);}
+    print(globals.subjectToggledList);
   }
 
   Future<void> _loadSubjects() async {
-    print("[DEBUG] HomePageState._loadSubjects: Loading subjects");
     bool exists = await dbHelper.tableExists('SubjectList');
-    print(
-        "[DEBUG] HomePageState._loadSubjects: SubjectList table exists: $exists");
     if (!exists) {
-      print(
-          "[DEBUG] HomePageState._loadSubjects: SubjectList table does not exist, creating table");
       await dbHelper.createSubjectTable();
-      print(
-          "[DEBUG] HomePageState._loadSubjects: SubjectList table created successfully");
     }
     globals.subjects = await dbHelper.readAll('SubjectList');
-    print(
-        "[DEBUG] HomePageState._loadSubjects: Subjects loaded: ${globals.subjects}");
     globals.numberOfSubjects = globals.subjects.length;
-    print(
-        "[DEBUG] HomePageState._loadSubjects: Number of subjects: ${globals.numberOfSubjects}");
     setState(() {
       _subjects = globals.subjects;
     });
-    print("[DEBUG] HomePageState._loadSubjects: State updated with new subjects");
   }
 
   @override
   Widget build(BuildContext context) {
-    print("[DEBUG] HomePageState.build: Building HomePage");
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -150,8 +114,6 @@ class HomePageState extends State<HomePage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: _subjects.length,
                     itemBuilder: (context, index) {
-                      print(
-                          "[DEBUG] HomePageState.build: Building ListTile for subject index: $index");
                       if (_subjects.isNotEmpty) {
                         if (globals.subjectToggledList[index] != true) {
                           return ListTile(
@@ -165,24 +127,17 @@ class HomePageState extends State<HomePage> {
                                   icon: const Icon(Icons.delete,
                                       color: Colors.red),
                                   onPressed: () async {
-                                    print(
-                                        "[DEBUG] HomePageState.build: Delete button pressed for subject index: $index");
                                     await dbHelper.deleteRowById(
                                         'SubjectList',
                                         _subjects[index]['id']);
-                                    print(
-                                        "[DEBUG] HomePageState.build: Subject deleted, reloading subjects");
                                     await _loadSubjects();
-                                    print(
-                                        "[DEBUG] HomePageState.build: Subjects reloaded after deletion");
                                   },
                                 ),
                               ],
                             ),
                             subtitle: Text(_subjects[index]['Desc'] ?? ''),
                             onTap: () {
-                              print(
-                                  '[DEBUG] HomePageState.build: Tapped item $index');
+                              print('Tapped item $index');
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -193,15 +148,12 @@ class HomePageState extends State<HomePage> {
                             },
                             onLongPress: () {
                               createToggleList();
-                              print(
-                                  '[DEBUG] HomePageState.build: Long tapped item $index');
+                              print('Long tapped item $index');
                               toggleSubjectEdit(index);
                             },
                           );
                         } else {
-                          print(
-                              "[DEBUG] HomePageState.build: Building editable Card for subject index: $index");
-                          return Card(
+                                                    return Card(
                             margin: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             child: Padding(
@@ -222,15 +174,11 @@ class HomePageState extends State<HomePage> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) async {
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subject name changed for index: $index");
                                       await dbHelper.updateRow(
                                         'SubjectList',
                                         _subjects[index]['id'],
                                         {'Name': val},
                                       );
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subject name updated in database");
                                     },
                                   ),
                                   const SizedBox(height: 8),
@@ -247,15 +195,11 @@ class HomePageState extends State<HomePage> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) async {
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subject description changed for index: $index");
                                       await dbHelper.updateRow(
                                         'SubjectList',
                                         _subjects[index]['id'],
                                         {'Desc': val},
                                       );
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subject description updated in database");
                                     },
                                   ),
                                   const SizedBox(height: 8),
@@ -264,24 +208,16 @@ class HomePageState extends State<HomePage> {
                                     icon: const Icon(Icons.check,
                                         color: Colors.green),
                                     onPressed: () async {
-                                      print(
-                                          "[DEBUG] HomePageState.build: Done button pressed for subject index: $index");
                                       setState(() {
-                                        globals.subjectToggledList[index] =
-                                            false;
+                                        globals.subjectToggledList[index] = false;
                                       });
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subject toggle state updated");
                                       await _loadSubjects();
-                                      print(
-                                          "[DEBUG] HomePageState.build: Subjects reloaded after update");
                                     },
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        }
+                          );}
                       } else {
                         return const Center(
                             child: Text('No subjects added yet'));
@@ -306,7 +242,6 @@ class HomePageState extends State<HomePage> {
   }
 
   void _addNewSubject() async {
-    print("[DEBUG] HomePageState._addNewSubject: Adding new subject");
     createToggleList();
     await dbHelper.insertRow('SubjectList', {
       'Name': 'New Subject ${_subjects.length + 1}',
@@ -314,20 +249,12 @@ class HomePageState extends State<HomePage> {
       'Img': ''
     });
     globals.subjectToggledList.add(true);
-    print(
-        "[DEBUG] HomePageState._addNewSubject: New subject added, reloading subjects");
     await _loadSubjects();
-    print(
-        "[DEBUG] HomePageState._addNewSubject: Subjects reloaded after adding new subject");
   }
 
   void toggleSubjectEdit(int index) {
-    print(
-        "[DEBUG] HomePageState.toggleSubjectEdit: Toggling edit mode for subject index: $index");
     setState(() {
       globals.subjectToggledList[index] = !globals.subjectToggledList[index];
     });
-    print(
-        "[DEBUG] HomePageState.toggleSubjectEdit: Edit mode toggled, new state: ${globals.subjectToggledList[index]}");
   }
 }

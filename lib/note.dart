@@ -90,6 +90,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
     print('debug 5');
     print(noApi);
     if(noApi){
+      globals.test=false;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => ApiKeyPrompt())
@@ -465,6 +466,16 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                 );
               },
             ),
+            IconButton(
+              icon: Icon(Icons.key),
+              onPressed: (){
+                Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ApiKeyPrompt())
+                );
+              }, 
+              tooltip: 'Change API Key',
+              ),
           ],
         ),
         body: SafeArea(
