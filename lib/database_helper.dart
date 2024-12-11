@@ -10,8 +10,9 @@ class DatabaseHelper {
 
   static Database? _database;
 
-  Future<Database> database() async {
+  Future<Database> database() async{
     if (_database != null) return _database!;
+    
     _database = await _initDatabase();
     return _database!;
   }
@@ -19,6 +20,7 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'my_database.db');
     print("[DEBUG] _initDatabase: Database path: $path");
+    
     return await openDatabase(
       path,
       version: 1,
@@ -27,24 +29,14 @@ class DatabaseHelper {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    await createSubjectTable();
-  }
-
-
-  Future<void> createSubjectTable() async {
-    try {
-      final db = await database();
-        await db.execute('''
-          CREATE TABLE SubjectList (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Name TEXT,
-            Desc TEXT,
-            Img TEXT
-          )
-        ''');
-      } catch (e) {
-        print('Error creating SubjectList table: $e');
-      }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SubjectList (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        Name TEXT,
+        Desc TEXT,
+        Img TEXT
+      )
+    ''');
   }
 
     Future<bool> databaseExists() async {

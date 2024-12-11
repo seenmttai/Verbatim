@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'globals.dart' as globals;
-import 'database_helper.dart';
 import 'note.dart';
-
-final dbHelper = DatabaseHelper.instance;
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 
 class SelectNotes extends StatefulWidget {
   final int index;
@@ -19,30 +18,60 @@ class SelectNotes extends StatefulWidget {
 class _SelectNotesState extends State<SelectNotes> {
   late int index;
   late String titleOfPage;
+  Database? _database;
 
   @override
   void initState() {
     super.initState();
     index = widget.index;
     titleOfPage = globals.subjects[index]['Name'];
-    _loadAndInitialize();
+    _initDatabase();
+  }
+
+  Future<void> _initDatabase() async {
+    final databasesPath = await getDatabasesPath();
+    final path = join(databasesPath, 'my_database.db'); // Updated database name
+
+    _database = await openDatabase(path);
+    await _loadAndInitialize();
   }
 
   Future<void> _loadAndInitialize() async {
-    await _notesInitialiserAndLoader();
+    await _notesInitializerAndLoader();
     createToggleList();
   }
 
-  Future<void> _notesInitialiserAndLoader() async {
+  Future<void> _notesInitializerAndLoader() async {
+    if (_database == null) return;
+
     String tableName = 'itemList_${globals.subjects[index]['id']}';
-    bool itemExists = await dbHelper.tableExists(tableName);
-    
-    if (!itemExists) {
-      await dbHelper.createTableInCurrentDataBase(tableName, ['name', 'desc']);
+    bool tableExists = await _checkTableExists(tableName);
+
+    if (!tableExists) {
+      await _createNotesTable(tableName);
     }
-    
-    globals.notes = await dbHelper.readAll(tableName);
+
+    globals.notes = await _database!.query(tableName);
     setState(() {});
+  }
+
+  Future<bool> _checkTableExists(String tableName) async {
+    final List<Map<String, dynamic>> tables = await _database!.query(
+      'sqlite_master',
+      where: 'type = ? AND name = ?',
+      whereArgs: ['table', tableName],
+    );
+    return tables.isNotEmpty;
+  }
+
+  Future<void> _createNotesTable(String tableName) async {
+    await _database!.execute('''
+      CREATE TABLE $tableName (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        desc TEXT
+      )
+    ''');
   }
 
   void createToggleList() {
@@ -59,13 +88,32 @@ class _SelectNotesState extends State<SelectNotes> {
   }
 
   Future<void> _addNewNote() async {
+    if (_database == null) return;
+
     String tableName = 'itemList_${globals.subjects[index]['id']}';
-    await dbHelper.insertRow(tableName, {
+    await _database!.insert(tableName, {
       'name': 'Lecture: ${globals.notes.length + 1}',
       'desc': 'Description for new lecture',
     });
     globals.subjectToggledList.add(true);
-    await _notesInitialiserAndLoader();
+    await _notesInitializerAndLoader();
+  }
+
+  Future<void> _deleteNote(int noteId) async {
+    if (_database == null) return;
+
+    String tableName = 'itemList_${globals.subjects[index]['id']}';
+    await _database!.delete(tableName, where: 'id = ?', whereArgs: [noteId]);
+    await _notesInitializerAndLoader();
+  }
+
+  Future<void> _updateNote(
+      int noteId, Map<String, dynamic> updatedValues) async {
+    if (_database == null) return;
+
+    String tableName = 'itemList_${globals.subjects[index]['id']}';
+    await _database!
+        .update(tableName, updatedValues, where: 'id = ?', whereArgs: [noteId]);
   }
 
   @override
@@ -97,11 +145,7 @@ class _SelectNotesState extends State<SelectNotes> {
                                 icon: const Icon(Icons.delete,
                                     color: Colors.red),
                                 onPressed: () async {
-                                  String tableName = 'itemList_${globals.subjects[this.index]['id']}';
-                                  await dbHelper.deleteRowById(
-                                      tableName,
-                                      globals.notes[index]['id']);
-                                  await _notesInitialiserAndLoader();
+                                  await _deleteNote(globals.notes[index]['id']);
                                 },
                               ),
                             ],
@@ -109,9 +153,11 @@ class _SelectNotesState extends State<SelectNotes> {
                           subtitle: Text(globals.notes[index]['desc'] ?? ''),
                           onTap: () {
                             Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => Notes(subjectIndex: this.index, index: index))
-                            );
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => Notes(
+                                        subjectIndex: this.index,
+                                        index: index)));
                           },
                           onLongPress: () {
                             toggleNoteEdit(index);
@@ -139,9 +185,7 @@ class _SelectNotesState extends State<SelectNotes> {
                                     isDense: true,
                                   ),
                                   onChanged: (val) async {
-                                    String tableName = 'itemList_${globals.subjects[this.index]['id']}';
-                                    await dbHelper.updateRow(
-                                      tableName,
+                                    await _updateNote(
                                       globals.notes[index]['id'],
                                       {'name': val},
                                     );
@@ -161,9 +205,7 @@ class _SelectNotesState extends State<SelectNotes> {
                                     isDense: true,
                                   ),
                                   onChanged: (val) async {
-                                    String tableName = 'itemList_${globals.subjects[this.index]['id']}';
-                                    await dbHelper.updateRow(
-                                      tableName,
+                                    await _updateNote(
                                       globals.notes[index]['id'],
                                       {'desc': val},
                                     );
@@ -177,7 +219,7 @@ class _SelectNotesState extends State<SelectNotes> {
                                     setState(() {
                                       globals.subjectToggledList[index] = false;
                                     });
-                                    await _notesInitialiserAndLoader();
+                                    await _notesInitializerAndLoader();
                                   },
                                 ),
                               ],

@@ -9,16 +9,16 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'package:get_it/get_it.dart';
 import 'globals.dart' as globals;
-import 'database_helper.dart';
 import 'recording_service.dart';
 import 'apiKeyPrompt.dart';
 import 'package:markdown_editor_plus/markdown_editor_plus.dart';
-
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 
 class Notes extends StatefulWidget {
   final int index;
   final int subjectIndex;
-  const Notes({Key? key, required this.subjectIndex, required this.index}) 
+  const Notes({Key? key, required this.subjectIndex, required this.index})
       : super(key: key);
 
   @override
@@ -26,22 +26,20 @@ class Notes extends StatefulWidget {
 }
 
 class _NotesState extends State<Notes> with WidgetsBindingObserver {
-
-  // Recording related variables
   late RecordingService _recordingService;
   String? audioPath;
   bool _isTranscribing = false;
 
-  // Database and content related variables
   late int index;
-  late String titleOfPage;
+  String titleOfPage = '';
   String sanitizedName = '';
   String sanitizedSubjectName = '';
   late String tableName = '';
   late int subjectIndex;
   final TextEditingController _textController = TextEditingController();
+  Database? _database;
+  bool _isLoading = true;
 
-  // List of models
   String _selectedModel = 'gemini-1.5-pro';
   final List<String> _availableModels = [
     'gemini-exp-1121',
@@ -56,14 +54,31 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    createAPITable();
     _recordingService = GetIt.instance<RecordingService>();
     WidgetsBinding.instance.addObserver(this);
-    _initializeComponents();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    await _initDatabase();
+    await _initializeComponents();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _initDatabase() async {
+    final databasesPath = await getDatabasesPath();
+    final path = p.join(databasesPath, 'my_database.db');
+
+    _database = await openDatabase(
+      path,
+    );
   }
 
   Future<void> _initializeComponents() async {
-    print('debug 1');
     index = widget.index;
     subjectIndex = widget.subjectIndex;
     titleOfPage = globals.notes[index]['name'];
@@ -73,88 +88,111 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
     tableName = 'contentOf_${sanitizedSubjectName}_${sanitizedName}_'
         '${globals.notes[index]['id']}';
-    print('debug 2');
-    
+
+    await createAPITable();
     await _contentInitialiserAndLoader();
   }
 
   Future<void> createAPITable() async {
-    bool apiTableExists= await dbHelper.tableExists('APITable');
-    print('debug 3');
-    print(apiTableExists);
-    if(!apiTableExists){
-      dbHelper.createTableInCurrentDataBase('APITable', ['APIKey']);
+    if (_database == null) return;
+    bool apiTableExists = await _checkTableExists('APITable');
+    if (!apiTableExists) {
+      await _createAPITableInDatabase();
     }
-    print('debug 4');
-    bool noApi= await dbHelper.ifEmpty('APITable');
-    print('debug 5');
-    print(noApi);
-    if(noApi){
-      globals.test=false;
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ApiKeyPrompt())
-      );
+    bool noApi = await _checkIfAPITableEmpty();
+    if (noApi) {
+      globals.test = false;
+      if (mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ApiKeyPrompt()),
+        );
+      }
     }
-    print('debug 6');
-    globals.APIKey= (await dbHelper.readAll('APITable'))[0]['APIKey'];
-    List<Map<String,dynamic>> tableAPIKey=(await dbHelper.readAll('APITable'));
-    print('I am checking');
-    print(tableAPIKey);
-    print(globals.APIKey);
+    globals.APIKey = (await _getAPIKeyFromTable())[0]['APIKey'];
+  }
+
+  Future<bool> _checkTableExists(String tableName) async {
+    final List<Map<String, dynamic>> tables = await _database!.query(
+      'sqlite_master',
+      where: 'type = ? AND name = ?',
+      whereArgs: ['table', tableName],
+    );
+    return tables.isNotEmpty;
+  }
+
+  Future<void> _createAPITableInDatabase() async {
+    await _database!.execute('''
+      CREATE TABLE APITable (
+        APIKey TEXT
+      )
+    ''');
+  }
+
+  Future<bool> _checkIfAPITableEmpty() async {
+    final result = await _database!.query('APITable');
+    return result.isEmpty;
+  }
+
+  Future<List<Map<String, dynamic>>> _getAPIKeyFromTable() async {
+    return await _database!.query('APITable');
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    print('debug 7');
     super.didChangeAppLifecycleState(state);
     if (_recordingService.isRecording) {
       if (state == AppLifecycleState.resumed) {
-        setState(() {}); 
+        setState(() {});
       }
     }
-    print('debug 8');
   }
 
-
-
   Future<void> _contentInitialiserAndLoader() async {
-    final dbHelper = DatabaseHelper.instance;
-    bool itemExists = await dbHelper.tableExists(tableName);
+    if (_database == null) return;
+    bool itemExists = await _checkTableExists(tableName);
 
     if (!itemExists) {
-      await dbHelper.createTableInCurrentDataBase(tableName, ['content']);
-      await dbHelper.insertRow(tableName, {'content': ''});
+      await _createContentTable(tableName);
+      await _insertInitialContent(tableName, {'content': ''});
     }
-    print('debug 9');
-    String initialContent = (await dbHelper.readAll(tableName))[0]['content'];
+    String initialContent =
+        (await _getContentFromTable(tableName))[0]['content'];
     _textController.text = initialContent;
-    
-    if (mounted) {
-      setState(() {});
-    }
-    print('debug 10');
+  }
+
+  Future<void> _createContentTable(String tableName) async {
+    await _database!.execute('''
+      CREATE TABLE $tableName (
+        content TEXT
+      )
+    ''');
+  }
+
+  Future<void> _insertInitialContent(
+      String tableName, Map<String, dynamic> row) async {
+    await _database!.insert(tableName, row);
+  }
+
+  Future<List<Map<String, dynamic>>> _getContentFromTable(
+      String tableName) async {
+    return await _database!.query(tableName);
   }
 
   Future<String?> getAudioFilePath() async {
     final directory = await getApplicationDocumentsDirectory();
     return '${directory.path}/recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    print('debug 11');
   }
 
   Future<void> startRecording() async {
-    print('debug 12');
     var micPermission = await Permission.microphone.request();
     var storagePermission = await Permission.storage.request();
-    print('debug 13');
-    
+
     if (!micPermission.isGranted || !storagePermission.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Required permissions not granted'))
-      );
+          const SnackBar(content: Text('Required permissions not granted')));
       return;
     }
-    print('debug 14');
     try {
       audioPath = await getAudioFilePath();
       if (audioPath != null) {
@@ -162,21 +200,16 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         setState(() {
           globals.isMicOn = true;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Recording started with high quality settings'),
-            duration: Duration(seconds: 2),
-          )
-        );
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Recording started'),
+          duration: Duration(seconds: 2),
+        ));
       }
     } catch (e) {
-      print('Error starting recording: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to start recording: $e'))
-      );
+          SnackBar(content: Text('Failed to start recording: $e')));
     }
-    print('debug 15');
   }
 
   Future<void> stopRecording() async {
@@ -190,54 +223,48 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         const SnackBar(
           content: Text('Recording stopped'),
           duration: Duration(seconds: 2),
-        )
+        ),
       );
     } catch (e) {
-      print('Error stopping recording: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to stop recording: $e'))
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to stop recording: $e')));
     }
-    print('debug 16');
   }
 
-
   Future<void> _transcribeAudioWithGemini({required String prompt}) async {
-    print('debug 17');
     if (audioPath == null || !await File(audioPath!).exists()) {
       _showErrorSnackbar('No audio recorded');
       return;
     }
 
-
     setState(() {
       _isTranscribing = true;
     });
 
-    print('debug 18');
-
     try {
       final File audioFile = File(audioPath!);
       List<int> audioBytes = await audioFile.readAsBytes();
-      
+
       final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
+        Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'contents': [{
-            'parts': [
-              {'text': prompt},
-              {
-                'inline_data': {
-                  'mime_type': 'audio/mp4',
-                  'data': base64Encode(audioBytes)
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt},
+                {
+                  'inline_data': {
+                    'mime_type': 'audio/mp4',
+                    'data': base64Encode(audioBytes)
+                  }
                 }
-              }
-            ]
-          }]
+              ]
+            }
+          ]
         }),
       );
-      print('debug 19');
 
       setState(() {
         _isTranscribing = false;
@@ -245,80 +272,81 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
 
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
-        String? transcription = responseBody['candidates'][0]['content']['parts'][0]['text'];
-        print('debug 20');
-        
+        String? transcription = responseBody['candidates'][0]['content']
+            ['parts'][0]['text'];
+
         if (transcription != null) {
           _updateContentWithTranscription(transcription);
         } else {
           _showErrorSnackbar('No transcription received');
         }
       } else {
-        print('Gemini API error: ${response.body}');
-        _showErrorSnackbar('Transcription failed:${response.body} ${response.statusCode}');
+        _showErrorSnackbar(
+            'Transcription failed:${response.body} ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
         _isTranscribing = false;
       });
       _showErrorSnackbar('Transcription error: $e');
-      print('debug 21');
     }
   }
 
   Future<void> _continueTranscribingAudio({required String prompt}) async {
-    print('debug 22');
     if (audioPath == null || !await File(audioPath!).exists()) {
       _showErrorSnackbar('No audio recorded');
       return;
     }
-    String memory= (await dbHelper.readAll(tableName))[0]['content'];
+    String memory = (await _getContentFromTable(tableName))[0]['content'];
 
     setState(() {
       _isTranscribing = true;
     });
-    print('debug 23');
 
     try {
       final File audioFile = File(audioPath!);
       List<int> audioBytes = await audioFile.readAsBytes();
-      
+
       final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
+        Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/$_selectedModel:generateContent?key=${globals.APIKey}'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'contents': [{
-            'parts': [
-              {'text': 'The current audio given is continution of previous audio, whose transcription was $memory \n\n Now, $prompt'},
-              {
-                'inline_data': {
-                  'mime_type': 'audio/mp4',
-                  'data': base64Encode(audioBytes)
+          'contents': [
+            {
+              'parts': [
+                {
+                  'text':
+                      'The current audio given is continution of previous audio, whose transcription was $memory \n\n Now, $prompt'
+                },
+                {
+                  'inline_data': {
+                    'mime_type': 'audio/mp4',
+                    'data': base64Encode(audioBytes)
+                  }
                 }
-              }
-            ]
-          }]
+              ]
+            }
+          ]
         }),
       );
-
-      print('debug 24');
       setState(() {
         _isTranscribing = false;
       });
 
-      print('debug 25');
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
-        String? transcription = responseBody['candidates'][0]['content']['parts'][0]['text'];
-        
+        String? transcription = responseBody['candidates'][0]['content']
+            ['parts'][0]['text'];
+
         if (transcription != null) {
           _updateContentWithTranscription(transcription);
         } else {
           _showErrorSnackbar('No transcription received');
         }
       } else {
-        print('Gemini API error: ${response.body}');
-        _showErrorSnackbar('Transcription failed:${response.body} ${response.statusCode}');
+        _showErrorSnackbar(
+            'Transcription failed:${response.body} ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
@@ -326,37 +354,34 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
       });
       _showErrorSnackbar('Transcription error: $e');
     }
-    print('debug 26');
   }
 
-
   void _updateContentWithTranscription(String transcription) async {
-    final dbHelper = DatabaseHelper.instance;
-    
+    if (_database == null) return;
     String currentContent = _textController.text;
-    String updatedContent = '$currentContent\n\n[Transcription ${DateTime.now().toString()}]:\n$transcription';
-    
-    await dbHelper.updateRow(tableName, 1, {'content': updatedContent});
-    print('debug 27');
+    String updatedContent =
+        '$currentContent\n\n[Transcription ${DateTime.now().toString()}]:\n$transcription';
+
+    await _updateContentInTable(tableName, {'content': updatedContent});
     setState(() {
       _textController.text = updatedContent;
     });
-    print('debug 28');
+  }
+
+  Future<void> _updateContentInTable(
+      String tableName, Map<String, dynamic> updatedValues) async {
+    await _database!.update(tableName, updatedValues);
   }
 
   void _showErrorSnackbar(String message) {
-    print('debug 29');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      )
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: Colors.red,
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   void _showModelSelectionDialog() {
-    print('debug 30');
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -364,20 +389,18 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
           title: const Text('Select AI Model'),
           content: SingleChildScrollView(
             child: Column(
-              children: _availableModels.map((model) => 
-                ListTile(
-                  title: Text(model),
-                  selected: model == _selectedModel,
-                  onTap: () {
-                    print('debug 31');
-                    setState(() {
-                      _selectedModel = model;
-                    });
-                    print('debug 32');
-                    Navigator.of(context).pop();
-                  },
-                )
-              ).toList(),
+              children: _availableModels
+                  .map((model) => ListTile(
+                        title: Text(model),
+                        selected: model == _selectedModel,
+                        onTap: () {
+                          setState(() {
+                            _selectedModel = model;
+                          });
+                          Navigator.of(context).pop();
+                        },
+                      ))
+                  .toList(),
             ),
           ),
         );
@@ -390,6 +413,7 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _recordingService.dispose();
     _textController.dispose();
+    _database?.close();
     super.dispose();
   }
 
@@ -410,7 +434,6 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
                 ),
                 TextButton(
                   onPressed: () async {
-                    print('debug 33');
                     await stopRecording();
                     Navigator.of(context).pop(true);
                   },
@@ -423,182 +446,204 @@ class _NotesState extends State<Notes> with WidgetsBindingObserver {
         }
         return true;
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(titleOfPage),
-          actions: [
-            IconButton(
-              icon: Icon(Icons.model_training),
-              onPressed: _showModelSelectionDialog,
-              tooltip: 'Select AI Model (Current: $_selectedModel)',
-            ),
-            IconButton(
-              icon: Icon(Icons.info_outline),
-              onPressed: () {
-                print('debug 34');
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('Recording Information'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Audio Quality Settings:'),
-                        Text('• Sample Rate: 48kHz'),
-                        Text('• Bit Rate: 320kbps'),
-                        Text('• Channels: Stereo'),
-                        Text('• Format: AAC/M4A'),
-                        SizedBox(height: 8),
-                        Text('Maximum recording duration: 3 hours'),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () { 
-                          print('debug 35');
-                          Navigator.of(context).pop();
-                          },
-                        child: Text('OK'),
-                      ),
-                    ],
+      child: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : Scaffold(
+              appBar: AppBar(
+                backgroundColor: Colors.blue.shade300,
+                title:
+                    Text(titleOfPage, style: TextStyle(color: Colors.white)),
+                actions: [
+                  IconButton(
+                    icon: Icon(Icons.model_training, color: Colors.white),
+                    onPressed: _showModelSelectionDialog,
+                    tooltip: 'Select AI Model (Current: $_selectedModel)',
                   ),
-                );
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.key),
-              onPressed: (){
-                Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ApiKeyPrompt())
-                );
-              }, 
-              tooltip: 'Change API Key',
-              ),
-          ],
-        ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: MarkdownAutoPreview(
-                      controller: _textController,
-                      //keyboardType: TextInputType.multiline,
-                      minLines: null,
-                      maxLines: null,
-                      style: TextStyle(fontSize: 16),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Start typing your notes...',
-                        hintStyle: TextStyle(color: Colors.grey),
-                      ),
-                      onChanged: (val) async {
-                        print('debug 36');
-                        final dbHelper = DatabaseHelper.instance;
-                        await dbHelper.updateRow(tableName, 1, {'content': val});
-                      },
-                    ),
+                  IconButton(
+                    icon: Icon(Icons.info_outline, color: Colors.white),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Recording Information'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Audio Quality Settings:'),
+                              Text('• Sample Rate: 48kHz'),
+                              Text('• Bit Rate: 320kbps'),
+                              Text('• Channels: Stereo'),
+                              Text('• Format: AAC/M4A'),
+                              SizedBox(height: 8),
+                              Text('Maximum recording duration: 3 hours'),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                              },
+                              child: Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ),
+                  IconButton(
+                    icon: Icon(Icons.key, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => ApiKeyPrompt()));
+                    },
+                    tooltip: 'Change API Key',
+                  ),
+                ],
               ),
-              Container(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              body: SafeArea(
+                child: Column(
                   children: [
-                    FloatingActionButton(
-                      heroTag: 'micButton',
-                      child: Icon(
-                        globals.isMicOn ? Icons.mic : Icons.mic_off,
-                        color: globals.isMicOn ? Colors.red : null,
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: MarkdownAutoPreview(
+                          controller: _textController,
+                          minLines: null,
+                          maxLines: null,
+                          style: TextStyle(fontSize: 16),
+                          decoration: InputDecoration(
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.0)),
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            hintText: 'Start typing your notes...',
+                            hintStyle: TextStyle(color: Colors.grey),
+                          ),
+                          onChanged: (val) async {
+                            if (_database == null) return;
+                            await _updateContentInTable(
+                                tableName, {'content': val});
+                          },
+                        ),
                       ),
-                      onPressed: () async {
-                        print('debug 37');
-                        if (globals.isMicOn) {
-                          await stopRecording();
-                          print('debug 38');
-                        } else {
-                          await startRecording();
-                          print('debug 39');
-                        }
-                      },
-                      tooltip: globals.isMicOn ? 'Stop Recording' : 'Start Recording',
                     ),
-                    GestureDetector(
-                      onLongPress: _isTranscribing 
-                        ? null 
-                        : () {
-                          _continueTranscribingAudio(
-                            prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
-                          );
-                          print('debug 40');
-                          },
-                      child:FloatingActionButton(
-                      heroTag: 'studentNotesButton',
-                      backgroundColor: _isTranscribing ? Colors.grey : null,
-                      child: _isTranscribing 
-                        ? CircularProgressIndicator(color: Colors.white)
-                        : Icon(Icons.school),
-                      onPressed: _isTranscribing 
-                        ? null 
-                        : () {
-                          _transcribeAudioWithGemini(
-                            prompt: 'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.'
-                          );
-                          print('debug 41');
-                          },
-                    )),
-                    GestureDetector(
-                      onLongPress: _isTranscribing 
-                        ? null 
-                        : () {
-                          _continueTranscribingAudio(
-                            prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
-                          );
-                          print('debug 42');
-                          },
-                      child: FloatingActionButton(
-                      heroTag: 'aiButton',
-                      backgroundColor: _isTranscribing ? Colors.grey : null,
-                      child: _isTranscribing 
-                        ? CircularProgressIndicator(color: Colors.white)
-                        : Icon(Icons.auto_fix_high),
-                      onPressed: _isTranscribing 
-                        ? null 
-                        : () { _transcribeAudioWithGemini(
-                            prompt: 'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.'
-                          );
-                          print('debug 43');
-                          },
-                    )),
+                    Container(
+                      decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.5),
+                              spreadRadius: 2,
+                              blurRadius: 5,
+                              offset: Offset(0, -3),
+                            ),
+                          ],
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(20))),
+                      padding: const EdgeInsets.all(8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          FloatingActionButton(
+                            heroTag: 'micButton',
+                            backgroundColor: globals.isMicOn
+                                ? Colors.red.shade300
+                                : Colors.blue.shade300,
+                            child: Icon(
+                              globals.isMicOn ? Icons.mic : Icons.mic_off,
+                              color: Colors.white,
+                            ),
+                            onPressed: () async {
+                              if (globals.isMicOn) {
+                                await stopRecording();
+                              } else {
+                                await startRecording();
+                              }
+                            },
+                            tooltip: globals.isMicOn
+                                ? 'Stop Recording'
+                                : 'Start Recording',
+                          ),
+                          GestureDetector(
+                              onLongPress: _isTranscribing
+                                  ? null
+                                  : () {
+                                      _continueTranscribingAudio(
+                                          prompt:
+                                              'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.');
+                                    },
+                              child: FloatingActionButton(
+                                heroTag: 'studentNotesButton',
+                                backgroundColor: _isTranscribing
+                                    ? Colors.grey
+                                    : Colors.blue.shade300,
+                                child: _isTranscribing
+                                    ? CircularProgressIndicator(
+                                        color: Colors.white)
+                                    : Icon(Icons.school, color: Colors.white),
+                                onPressed: _isTranscribing
+                                    ? null
+                                    : () {
+                                        _transcribeAudioWithGemini(
+                                            prompt:
+                                                'Write detailed notes of the given audio as a student might, organizing the content clearly and maintaining all technical accuracy. Include all information from the audio without omitting anything.');
+                                      },
+                              )),
+                          GestureDetector(
+                              onLongPress: _isTranscribing
+                                  ? null
+                                  : () {
+                                      _continueTranscribingAudio(
+                                          prompt:
+                                              'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.');
+                                    },
+                              child: FloatingActionButton(
+                                heroTag: 'aiButton',
+                                backgroundColor: _isTranscribing
+                                    ? Colors.grey
+                                    : Colors.blue.shade300,
+                                child: _isTranscribing
+                                    ? CircularProgressIndicator(
+                                        color: Colors.white)
+                                    : Icon(Icons.auto_fix_high,
+                                        color: Colors.white),
+                                onPressed: _isTranscribing
+                                    ? null
+                                    : () {
+                                        _transcribeAudioWithGemini(
+                                            prompt:
+                                                'Transcribe this audio with high accuracy, being comfortably multilingual(english and hindi mainly). Include timestamps where context shifts significantly.');
+                                      },
+                              )),
+                        ],
+                      ),
+                    ),
+                    if (globals.isMicOn)
+                      Container(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.fiber_manual_record,
+                                color: Colors.red, size: 16),
+                            SizedBox(width: 8),
+                            Text(
+                              'Recording in Progress',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
-              if (globals.isMicOn)
-                Container(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  color: Colors.red.withOpacity(0.1),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
-                      SizedBox(width: 8),
-                      Text(
-                        'Recording in Progress',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

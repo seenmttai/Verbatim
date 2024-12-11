@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:organiser/main.dart'; // Import for dbHelper access
 import 'globals.dart' as globals;
+import 'database_helper.dart';
+
+final dbHelper = DatabaseHelper.instance;
 
 class ApiKeyPrompt extends StatefulWidget {
   const ApiKeyPrompt({super.key});
@@ -11,6 +14,7 @@ class ApiKeyPrompt extends StatefulWidget {
 
 class _ApiKeyPromptState extends State<ApiKeyPrompt> {
   final _apiKeyController = TextEditingController();
+
 
   @override
   void dispose() {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'database_helper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,29 +7,24 @@ import 'globals.dart' as globals;
 import 'selectNotes.dart';
 import 'package:get_it/get_it.dart';
 import 'recording_service.dart';
-
-
-
-final dbHelper = DatabaseHelper.instance;
-
-
-
+import 'package:path/path.dart';
 
 void setupServiceLocator() {
   GetIt.instance.registerLazySingleton(() => RecordingService());
 }
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   setupServiceLocator();
+
   if (kIsWeb) {
     throw UnsupportedError('Web is not supported yet.');
   } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
-  runApp(const MainApp());
 
+  runApp(const MainApp());
 }
 
 class MainApp extends StatelessWidget {
@@ -44,8 +38,8 @@ class MainApp extends StatelessWidget {
   }
 }
 
-class HomePage extends StatefulWidget { 
-  const HomePage({super.key}); 
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
   HomePageState createState() => HomePageState();
@@ -53,10 +47,45 @@ class HomePage extends StatefulWidget {
 
 class HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> _subjects = [];
+  Database? _database;
 
   @override
   void initState() {
     super.initState();
+    _initDatabase();
+  }
+
+  Future<void> _initDatabase() async {
+    final databasesPath = await getDatabasesPath();
+    final path = join(databasesPath, 'my_database.db');
+
+    _database = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE SubjectList (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Name TEXT,
+            Desc TEXT,
+            Img TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE Notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            SubjectId INTEGER,
+            Name TEXT,
+            Desc TEXT,
+            Path TEXT,
+            Img TEXT,
+            Date TEXT,
+            Duration INTEGER,
+            FOREIGN KEY (SubjectId) REFERENCES SubjectList(id)
+          )
+        ''');
+      },
+    );
     _loadAndInitialize();
   }
 
@@ -65,24 +94,52 @@ class HomePageState extends State<HomePage> {
     createToggleList();
   }
 
-    void createToggleList(){
+  void createToggleList() {
     print('I am in createToggleList!');
     print(globals.numberOfSubjects);
     globals.subjectToggledList.clear();
-    for(int i=0;i<globals.numberOfSubjects;i++){
-      globals.subjectToggledList.add(false);}
+    for (int i = 0; i < globals.numberOfSubjects; i++) {
+      globals.subjectToggledList.add(false);
+    }
     print(globals.subjectToggledList);
   }
 
   Future<void> _loadSubjects() async {
-    bool exists = await dbHelper.tableExists('SubjectList');
-    if (!exists) {
-      await dbHelper.createSubjectTable();
-    }
-    globals.subjects = await dbHelper.readAll('SubjectList');
+    if (_database == null) return;
+    globals.subjects = await _database!.query('SubjectList');
     globals.numberOfSubjects = globals.subjects.length;
     setState(() {
       _subjects = globals.subjects;
+    });
+  }
+
+  Future<void> _deleteSubject(int id) async {
+    if (_database == null) return;
+    await _database!.delete('SubjectList', where: 'id = ?', whereArgs: [id]);
+    await _loadSubjects();
+  }
+
+  Future<void> _updateSubject(int id, Map<String, dynamic> values) async {
+    if (_database == null) return;
+    await _database!
+        .update('SubjectList', values, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> _addNewSubject() async {
+    if (_database == null) return;
+    createToggleList();
+    await _database!.insert('SubjectList', {
+      'Name': 'New Subject ${_subjects.length + 1}',
+      'Desc': 'Description for new subject',
+      'Img': ''
+    });
+    globals.subjectToggledList.add(true);
+    await _loadSubjects();
+  }
+
+  void toggleSubjectEdit(int index) {
+    setState(() {
+      globals.subjectToggledList[index] = !globals.subjectToggledList[index];
     });
   }
 
@@ -127,10 +184,8 @@ class HomePageState extends State<HomePage> {
                                   icon: const Icon(Icons.delete,
                                       color: Colors.red),
                                   onPressed: () async {
-                                    await dbHelper.deleteRowById(
-                                        'SubjectList',
+                                    await _deleteSubject(
                                         _subjects[index]['id']);
-                                    await _loadSubjects();
                                   },
                                 ),
                               ],
@@ -153,7 +208,7 @@ class HomePageState extends State<HomePage> {
                             },
                           );
                         } else {
-                                                    return Card(
+                          return Card(
                             margin: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             child: Padding(
@@ -174,8 +229,7 @@ class HomePageState extends State<HomePage> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) async {
-                                      await dbHelper.updateRow(
-                                        'SubjectList',
+                                      await _updateSubject(
                                         _subjects[index]['id'],
                                         {'Name': val},
                                       );
@@ -195,15 +249,13 @@ class HomePageState extends State<HomePage> {
                                       isDense: true,
                                     ),
                                     onChanged: (val) async {
-                                      await dbHelper.updateRow(
-                                        'SubjectList',
+                                      await _updateSubject(
                                         _subjects[index]['id'],
                                         {'Desc': val},
                                       );
                                     },
                                   ),
                                   const SizedBox(height: 8),
-                                  // Done button
                                   IconButton(
                                     icon: const Icon(Icons.check,
                                         color: Colors.green),
@@ -217,7 +269,8 @@ class HomePageState extends State<HomePage> {
                                 ],
                               ),
                             ),
-                          );}
+                          );
+                        }
                       } else {
                         return const Center(
                             child: Text('No subjects added yet'));
@@ -239,22 +292,5 @@ class HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  void _addNewSubject() async {
-    createToggleList();
-    await dbHelper.insertRow('SubjectList', {
-      'Name': 'New Subject ${_subjects.length + 1}',
-      'Desc': 'Description for new subject',
-      'Img': ''
-    });
-    globals.subjectToggledList.add(true);
-    await _loadSubjects();
-  }
-
-  void toggleSubjectEdit(int index) {
-    setState(() {
-      globals.subjectToggledList[index] = !globals.subjectToggledList[index];
-    });
   }
 }
